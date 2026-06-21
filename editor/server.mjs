@@ -4,6 +4,9 @@ import http from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const pexec = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -115,6 +118,16 @@ async function listImages(id) {
   }
 }
 
+// Git im Projektordner ausführen. GIT_TERMINAL_PROMPT=0 -> kein Hängen, falls
+// Zugangsdaten fehlen (dann klarer Fehler statt blockierendem Passwort-Prompt).
+function git(args) {
+  return pexec('git', args, {
+    cwd: ROOT,
+    maxBuffer: 16 * 1024 * 1024,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  });
+}
+
 async function readPassage(id) {
   const dir = within(PASSAGES_DIR, id);
   if (!dir) return null;
@@ -177,6 +190,28 @@ const server = http.createServer(async (req, res) => {
       for (const id of present) if (!order.includes(id)) order.push(id);
       await writeOrder(order);
       return sendJson(res, 200, { ok: true });
+    }
+    // Veröffentlichen: alles committen und zu GitHub pushen (Action deployed dann)
+    if (pathname === '/api/publish' && method === 'POST') {
+      try {
+        // Remote vorhanden?
+        try { await git(['remote', 'get-url', 'origin']); }
+        catch { return sendJson(res, 200, { ok: false, error: 'Kein GitHub-Repo verbunden (origin fehlt). Bitte erst einmal verbinden & pushen.' }); }
+        await git(['add', '-A']);
+        let changed = true;
+        try { await git(['diff', '--cached', '--quiet']); changed = false; } catch { changed = true; }
+        if (changed) await git(['commit', '-m', 'Update ' + new Date().toISOString()]);
+        const { stdout, stderr } = await git(['push']);
+        const out = (stdout + '\n' + stderr).trim();
+        const upToDate = /up-to-date/i.test(out);
+        return sendJson(res, 200, {
+          ok: true,
+          message: changed ? 'Veröffentlicht – Seite baut neu' : (upToDate ? 'Bereits aktuell' : 'Ausstehende Änderungen gepusht'),
+        });
+      } catch (err) {
+        const msg = String((err && (err.stderr || err.message)) || err);
+        return sendJson(res, 200, { ok: false, error: msg.slice(0, 400) });
+      }
     }
     // Alle Passagen inkl. Layout (für die Vorschau-Leiste)
     if (pathname === '/api/all' && method === 'GET') {

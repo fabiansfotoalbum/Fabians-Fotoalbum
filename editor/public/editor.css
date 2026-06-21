@@ -55,6 +55,9 @@ button:disabled { opacity: .4; cursor: default; }
 .tool.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .primary:hover { background: #3e7cf0; }
+.publish { background: #2f7d4f; border-color: #2f7d4f; color: #fff; font-weight: 600; }
+.publish:hover { background: #2a6f46; }
+.publish:disabled { opacity: .5; }
 .ghost { text-decoration: none; background: transparent; }
 select { padding: 6px 8px; max-width: 200px; }
 input[type="range"] { width: 120px; accent-color: var(--accent); }

@@ -634,6 +634,24 @@ async function save() {
 els.save.addEventListener('click', save);
 els.undo.addEventListener('click', undo);
 els.redo.addEventListener('click', redo);
+
+// Speichern + live auf die Webseite stellen (commit + push -> GitHub Action deployed)
+const publishBtn = document.getElementById('publish');
+async function publish() {
+  if (currentId) await save();
+  publishBtn.disabled = true;
+  setStatus('Veröffentliche …');
+  try {
+    const j = await (await fetch('/api/publish', { method: 'POST' })).json();
+    if (j.ok) setStatus(j.message + ' (Seite ~1 Min.)', 'ok');
+    else { setStatus('Fehler – siehe Konsole', 'err'); console.error('Publish:', j.error); }
+  } catch (e) {
+    setStatus('Fehler – siehe Konsole', 'err'); console.error(e);
+  } finally {
+    publishBtn.disabled = false;
+  }
+}
+publishBtn.addEventListener('click', publish);
 document.getElementById('hintClose')?.addEventListener('click', () => { pressureHint.hidden = true; });
 
 // ---------- Passagen laden / wechseln / neu ----------
@@ -824,6 +842,7 @@ window.addEventListener('keydown', e => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); publish(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
   if (e.target.matches('input, select, textarea')) return;
   if (e.key === 'v') setTool('select');

@@ -30,7 +30,7 @@ Die Reihenfolge steht in `public/passages/_order.json` (Editor & Website lesen s
 ### Tastenkürzel
 - **V** Auswählen · **B** Pinsel · **E** Radierer · **L** Lasso (Gemaltes auswählen/verschieben/skalieren)
 - **⌘Z** Rückgängig · **⌘⇧Z** / **⌘Y** Wiederholen
-- **⌘S** Speichern · **Entf** ausgewähltes Bild entfernen
+- **⌘S** Speichern · **⌘⇧P** Veröffentlichen (live stellen) · **Entf** ausgewähltes Bild entfernen
 - Pinselgröße folgt dem **Druck** des Stifts (Grundgröße über den Regler „Größe").
 
 ## Aufbau

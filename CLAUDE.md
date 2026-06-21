@@ -27,6 +27,15 @@ Gebaut wird mit zwei Teilen:
 - Publish: `npm install` (einmal) → `npm run build` → statische Seite in `dist/` (Hosting noch offen:
   Netlify/Vercel/GitHub Pages). `npm run editor` startet den Server auch ohne die .app.
 
+## Veröffentlichen (One-Click aus der App)
+- Editor-Button **„⤴ Veröffentlichen"** (⌘⇧P) → `save()` + `POST /api/publish` → Server macht
+  `git add -A` / `commit` / `push`. GitHub Action (`.github/workflows/deploy.yml`) baut & deployed → Live nach ~1 Min.
+- **Voraussetzung einmalig:** GitHub-Remote `origin` verbunden UND erster Push manuell gemacht, damit die
+  HTTPS-Zugangsdaten im macOS-Schlüsselbund (credential.helper osxkeychain) liegen. Danach pusht die App
+  ohne Prompt. Fehlt origin/Creds, meldet der Endpoint einen klaren Fehler (kein Hängen wegen `GIT_TERMINAL_PROMPT=0`).
+- Pfade in `index.astro` sind **relativ** (`passages/…`, `viewer.css`) → funktioniert auf GitHub
+  Project Pages (`…github.io/repo/`) UND auf User-Page/Custom-Domain (Root) ohne `base`-Konfiguration.
+
 ## Datenmodell (eine Passage)
 ```
 public/passages/<id>/
@@ -46,6 +55,7 @@ public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (
   - `GET /api/passage?id=` · `POST /api/passage?id=` (passage.json) · `DELETE /api/passage?id=`
   - `POST /api/drawing?id=` (PNG-Body) · `POST /api/image?id=&name=` (Foto-Upload)
   - `POST /api/order {order:[ids]}` (Reihenfolge setzen) · `GET /api/all` (alle inkl. meta für Leiste)
+  - `POST /api/publish` (git add+commit+push im Projektordner; `git()`-Helper mit `GIT_TERMINAL_PROMPT=0`).
   - Statisch: Editor-UI aus `editor/public/`, Viewer-Assets + `/passages/*` aus `public/`.
   - Sicherheit: `within()` verhindert Path-Traversal; `safeId()`/`safeName()` säubern Eingaben.
 - `editor/public/index.html|editor.css|editor.js` – die Editor-Oberfläche.
