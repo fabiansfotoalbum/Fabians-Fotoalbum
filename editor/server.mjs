@@ -182,6 +182,27 @@ const server = http.createServer(async (req, res) => {
       await writeOrder((await readOrder()).filter(x => x !== id));
       return sendJson(res, 200, { ok: true });
     }
+    // Passage umbenennen (Ordner umbenennen + Reihenfolge + passage.json.id)
+    if (pathname === '/api/rename' && method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const id = safeId(body.id), newId = safeId(body.newId);
+      if (!id || !newId) return sendJson(res, 400, { error: 'Ungültiger Name' });
+      if (id === newId) return sendJson(res, 200, { ok: true, id });
+      const from = within(PASSAGES_DIR, id), to = within(PASSAGES_DIR, newId);
+      if (!from || !to || from === PASSAGES_DIR) return sendJson(res, 400, { error: 'Ungültiger Name' });
+      try { await fs.access(from); } catch { return sendJson(res, 404, { error: 'Passage nicht gefunden' }); }
+      try { await fs.access(to); return sendJson(res, 400, { error: 'Name existiert bereits' }); } catch {}
+      await fs.rename(from, to);
+      try {
+        const pj = JSON.parse(await fs.readFile(path.join(to, 'passage.json'), 'utf8'));
+        pj.id = newId;
+        await fs.writeFile(path.join(to, 'passage.json'), JSON.stringify(pj), 'utf8');
+      } catch {}
+      const order = (await readOrder()).map(x => (x === id ? newId : x));
+      if (!order.includes(newId)) order.push(newId);
+      await writeOrder(order);
+      return sendJson(res, 200, { ok: true, id: newId });
+    }
     // Reihenfolge der Passagen setzen (Drag & Drop in der Leiste)
     if (pathname === '/api/order' && method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');

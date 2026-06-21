@@ -24,17 +24,61 @@ Gebaut wird mit zwei Teilen:
 - **`Foto-Editor.app`** doppelklicken → startet `editor/server.mjs` (Port **4455**) und öffnet den
   Editor in Firefox. Skript: `Foto-Editor.app/Contents/MacOS/Foto-Editor` (Projektpfad = 3 Ebenen über der Binary).
 - Editor-URL: `http://127.0.0.1:4455/` · Vorschau-Stapel: `/view`
-- Publish: `npm install` (einmal) → `npm run build` → statische Seite in `dist/` (Hosting noch offen:
-  Netlify/Vercel/GitHub Pages). `npm run editor` startet den Server auch ohne die .app.
+- Publish lokal testen: `npm install` (einmal) → `npm run build` → statische Seite in `dist/`.
+  `npm run editor` startet den Server auch ohne die .app. Live-Deploy s. Abschnitt „Veröffentlichen & Deployment".
 
-## Veröffentlichen (One-Click aus der App)
-- Editor-Button **„⤴ Veröffentlichen"** (⌘⇧P) → `save()` + `POST /api/publish` → Server macht
-  `git add -A` / `commit` / `push`. GitHub Action (`.github/workflows/deploy.yml`) baut & deployed → Live nach ~1 Min.
-- **Voraussetzung einmalig:** GitHub-Remote `origin` verbunden UND erster Push manuell gemacht, damit die
-  HTTPS-Zugangsdaten im macOS-Schlüsselbund (credential.helper osxkeychain) liegen. Danach pusht die App
-  ohne Prompt. Fehlt origin/Creds, meldet der Endpoint einen klaren Fehler (kein Hängen wegen `GIT_TERMINAL_PROMPT=0`).
-- Pfade in `index.astro` sind **relativ** (`passages/…`, `viewer.css`) → funktioniert auf GitHub
-  Project Pages (`…github.io/repo/`) UND auf User-Page/Custom-Domain (Root) ohne `base`-Konfiguration.
+## Veröffentlichen & Deployment (GitHub Pages) — LIVE
+- **Live:** https://fabiansfotoalbum.github.io/Fabians-Fotoalbum/
+- **Repo:** `git@github.com:fabiansfotoalbum/Fabians-Fotoalbum.git` · Branch `main`
+- **One-Click:** Editor-Button **„⤴ Veröffentlichen"** (⌘⇧P) → `save()` + `POST /api/publish` → Server macht
+  `git add -A` / `commit` / `push` (über SSH-Alias, s. u.). Die GitHub-Action baut Astro und deployed → live nach ~1 Min.
+
+### Reproduzierbares Setup von Null (z. B. neuer Rechner / neues Repo)
+**1) Leeres Repo** auf GitHub anlegen (Public, OHNE README/.gitignore).
+
+**2) SSH einrichten — die Falle:** Ein SSH-Schlüssel gehört immer zu **genau einem** GitHub-Account.
+Hier gehört der Standardschlüssel `~/.ssh/id_ed25519` zum Account `FabianN1111`, das Repo aber zu
+`fabiansfotoalbum` → „Repository not found". Lösung: eigener Schlüssel + Host-Alias, der NUR für dieses
+Repo genutzt wird:
+```bash
+ssh-keygen -t ed25519 -C "fabiansfotoalbum" -f ~/.ssh/id_ed25519_album -N ""   # ohne Passphrase -> App kann pushen
+# ~/.ssh/config ergänzen:
+#   Host github-album
+#     HostName github.com
+#     User git
+#     IdentityFile ~/.ssh/id_ed25519_album
+#     IdentitiesOnly yes        # << wichtig, sonst bietet ssh den falschen Schlüssel an
+cat ~/.ssh/id_ed25519_album.pub   # diesen Public Key beim RICHTIGEN Account (fabiansfotoalbum) unter Settings -> SSH keys hinterlegen
+ssh -T git@github-album            # muss "Hi fabiansfotoalbum!" begrüßen (Exit 1 ist normal)
+```
+
+**3) Remote setzen (Alias-Host verwenden!) und pushen:**
+```bash
+git init -b main                                   # falls noch kein Repo
+git remote add origin git@github-album:fabiansfotoalbum/Fabians-Fotoalbum.git
+git add -A && git commit -m "Initial" && git push -u origin main
+```
+
+**4) GitHub Pages aktivieren — KRITISCH:** Settings → Pages → **Source = „GitHub Actions"**
+(NICHT „Deploy from a branch"!).
+- **Falsch-Symptom:** Seite zeigt die README via Jekyll (`<meta name="generator" content="Jekyll …">`)
+  und alle Assets (`viewer.js`, Fotos) sind **404** → Quelle steht noch auf „Deploy from a branch".
+  GitHub serviert dann das Repo-Wurzelverzeichnis (kein `index.html` dort → README) statt unseres `dist/`.
+- Nach Umstellen einen **frischen Deploy** auslösen: leerer Commit `git commit --allow-empty -m "deploy" && git push`
+  (re-run des alten Laufs reicht oft nicht). Erster grüner deploy-Job ersetzt die alte Jekyll-Bereitstellung nach ~30 s.
+- **Neuer GitHub-Account:** E-Mail muss **verifiziert** sein, sonst laufen Actions gar nicht.
+
+**5) Workflow** `.github/workflows/deploy.yml`: `on: push main` → Job *build* (`npm ci` → `npm run build` →
+`upload-pages-artifact path:./dist`) → Job *deploy* (`deploy-pages`). Braucht `package-lock.json` (für `npm ci`,
+ist committet). Die „Node 20 deprecated"-Warnung ist **harmlos**.
+
+### Laufender Betrieb
+- App: **⤴ Veröffentlichen**. Oder manuell: `git add -A && git commit -m "…" && git push`.
+- Prüfen, ob live korrekt: `curl -s <URL>/ | grep -i generator` darf **kein** Jekyll zeigen;
+  `curl -o /dev/null -w "%{http_code}" <URL>/viewer.js` muss **200** sein.
+- `GIT_TERMINAL_PROMPT=0` im `git()`-Helper → bei fehlendem Zugang klare Fehlermeldung statt Hängen.
+- Pfade in `index.astro` sind **relativ** (`passages/…`, `viewer.css`) → läuft unter `…github.io/<repo>/`
+  UND auf Root/Custom-Domain ohne `base`-Konfiguration.
 
 ## Datenmodell (eine Passage)
 ```
@@ -53,6 +97,7 @@ public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (
 - `editor/server.mjs` – Node-HTTP-Server. API:
   - `GET /api/passages` · `POST /api/passages {id, before?, after?}` (anlegen + einsortieren)
   - `GET /api/passage?id=` · `POST /api/passage?id=` (passage.json) · `DELETE /api/passage?id=`
+  - `POST /api/rename {id, newId}` (Ordner umbenennen + `_order.json` + `passage.json.id`)
   - `POST /api/drawing?id=` (PNG-Body) · `POST /api/image?id=&name=` (Foto-Upload)
   - `POST /api/order {order:[ids]}` (Reihenfolge setzen) · `GET /api/all` (alle inkl. meta für Leiste)
   - `POST /api/publish` (git add+commit+push im Projektordner; `git()`-Helper mit `GIT_TERMINAL_PROMPT=0`).
@@ -86,7 +131,9 @@ public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (
   nicht über DOM-Handles. Transform-Start macht `pushUndo()`; `applyState`/`openPassage` löschen die Auswahl.
   Hinweis: Ink-Textur ist koordinaten-deterministisch → nach Verschieben/Skalieren ändert sich die Körnung leicht.
 - **Passagen-Leiste links**: Mini-Vorschauen (`buildMini`), Klick öffnet, **Drag&Drop** sortiert
-  (`dragAfter`/`persistOrder` → `/api/order`), **Rechtsklick**-Kontextmenü (neu davor/danach, löschen).
+  (`dragAfter`/`persistOrder` → `/api/order`), **Rechtsklick**-Kontextmenü (neue Passage davor/danach,
+  **umbenennen** via `renamePassage` → `/api/rename`, löschen). Umbenennen der aktuellen Passage speichert
+  vorher (Ordner zieht um) und öffnet sie unter neuem Namen neu.
 - **Tastenkürzel**: V/B/E Werkzeuge · ⌘Z / ⌘⇧Z / ⌘Y · ⌘S speichern · Entf = ausgewähltes Bild weg.
 
 ## Öffentliche Navigation (Pager) — `viewer.js setupPager()`
@@ -111,7 +158,11 @@ public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (
   Kontrast-/Textur-Änderungen). Beim Öffnen wird die Canvas aber sofort aus `strokes` neu gerendert.
 - `_order.json` ist führend; `listPassages()` heilt sie (fehlende anhängen, gelöschte entfernen).
 - Drag in der Leiste setzt `justDragged`, damit kein versehentliches Öffnen nach dem Sortieren passiert.
+- **GitHub Pages MUSS auf Source „GitHub Actions" stehen** (nicht „Deploy from a branch") — sonst rendert
+  Jekyll die README und alle Assets sind 404. Siehe Abschnitt „Veröffentlichen & Deployment".
+- Push läuft über den SSH-Alias `github-album` (Remote-URL = `git@github-album:…`), NICHT über `git@github.com:…`,
+  weil der Standardschlüssel zu einem anderen Account gehört.
 
 ## Offen / Ideen
-- **Hosting** final wählen (Netlify/Vercel/GitHub Pages).
-- Mögliche Erweiterung: echtes „Umblättern" als Alternative zum Hochschieben; Einfüge-Indikator beim Sortieren.
+- Mögliche Erweiterung: echtes „Umblättern" als Alternative zum Hochschieben; Einfüge-Indikator beim Sortieren;
+  Bildunterschriften; eigene Domain (Settings → Pages → Custom domain, dank relativer Pfade ohne Codeänderung).

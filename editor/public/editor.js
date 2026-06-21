@@ -717,6 +717,23 @@ async function createPassage(opts = {}) {
 els.newPassage.addEventListener('click', () => createPassage());
 document.getElementById('addPassageSide').addEventListener('click', () => createPassage());
 
+// Passage umbenennen
+async function renamePassage(id) {
+  const neu = prompt('Neuer Name für die Passage:', id);
+  if (!neu || neu === id) return;
+  if (id === currentId && dirty) await save(); // Änderungen sichern, bevor der Ordner umzieht
+  const res = await fetch('/api/rename', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, newId: neu }),
+  });
+  const j = await res.json();
+  if (!j.ok) { setStatus(j.error || 'Fehler', 'err'); return; }
+  await loadPassageList(j.id);
+  if (id === currentId) { dirty = false; await openPassage(j.id); }
+  await refreshSidebar();
+  setStatus('Umbenannt', 'ok');
+}
+
 // Passage löschen
 async function deletePassage(id) {
   if (!confirm(`Passage „${id}" wirklich löschen? Das entfernt den gesamten Ordner inkl. Fotos.`)) return;
@@ -826,6 +843,7 @@ function showCtxMenu(x, y, id) {
   };
   add('Neue Passage davor', () => createPassage({ before: id }));
   add('Neue Passage danach', () => createPassage({ after: id }));
+  add('Passage umbenennen', () => renamePassage(id));
   const div = document.createElement('div'); div.className = 'divider'; ctxmenu.appendChild(div);
   add('Passage löschen', () => deletePassage(id), true);
   ctxmenu.hidden = false;
