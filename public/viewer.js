@@ -7,6 +7,22 @@
 'use strict';
 const CANVAS_W = 2560, CANVAS_H = 1440;
 
+// clip-path (inset), das ein Bild exakt auf den Canvas beschränkt – nur für
+// Bilder mit `clip:true` (Option „kein Überlauf"). Werte in % der Bildkante.
+function clipInset(im) {
+  const t = Math.max(0, -im.y) / im.h * 100;
+  const r = Math.max(0, (im.x + im.w) - CANVAS_W) / im.w * 100;
+  const b = Math.max(0, (im.y + im.h) - CANVAS_H) / im.h * 100;
+  const l = Math.max(0, -im.x) / im.w * 100;
+  return `inset(${t}% ${r}% ${b}% ${l}%)`;
+}
+// Innen-Bild-Style für den Beschnitt (crop: Bruchteile des Originals).
+function cropInnerStyle(im) {
+  const c = im.crop;
+  if (!c) return 'width:100%;height:100%;left:0;top:0';
+  return `width:${100 / c.w}%;height:${100 / c.h}%;left:${-c.x / c.w * 100}%;top:${-c.y / c.h * 100}%`;
+}
+
 async function buildFromApi(root) {
   const list = (await (await fetch('/api/passages')).json()).passages;
   if (!list.length) { document.body.innerHTML = '<div class="empty">Noch keine Passagen.</div>'; return []; }
@@ -20,13 +36,17 @@ async function buildFromApi(root) {
     const stage = document.createElement('div');
     stage.className = 'stage';
     for (const im of ((data.meta && data.meta.images) || [])) {
-      const el = document.createElement('img');
-      el.className = 'layer-img';
-      el.src = `/passages/${id}/${encodeURIComponent(im.src)}`;
-      el.style.cssText =
+      const wrap = document.createElement('div');
+      wrap.className = 'layer-img';
+      wrap.style.cssText =
         `left:${im.x / CANVAS_W * 100}%;top:${im.y / CANVAS_H * 100}%;` +
         `width:${im.w / CANVAS_W * 100}%;height:${im.h / CANVAS_H * 100}%`;
-      stage.appendChild(el);
+      if (im.clip) wrap.style.clipPath = clipInset(im);
+      const el = document.createElement('img');
+      el.src = `/passages/${id}/${encodeURIComponent(im.src)}`;
+      el.style.cssText = cropInnerStyle(im);
+      wrap.appendChild(el);
+      stage.appendChild(wrap);
     }
     const d = document.createElement('img');
     d.className = 'drawing';
@@ -56,6 +76,13 @@ function setupPager(sections) {
   const IDLE   = 110;     // ms ohne Eingabe -> Vorschau federt zurück
   // -------------------------------------------------------------------------
 
+  // Easing für das clip-path-Gleiten des Anschnitts. Verschwinden = ease-out
+  // (sanftes Ausklingen). Auftauchen = die zeitlich umgekehrte Kurve, damit es
+  // genau die Rückwärts-Version des Verschwindens ist (sanftes Anlaufen, kein
+  // abruptes Reinspringen). Reverse von (x1,y1,x2,y2) = (1-x2,1-y2,1-x1,1-y1).
+  const EASE_DISAPPEAR = 'cubic-bezier(.22, .61, .36, 1)';
+  const EASE_APPEAR    = 'cubic-bezier(.64, 0, .78, .39)';
+
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   let pos = 0;            // gerenderte Position (stufenlos)
   let target = 0;         // Zielseite (Ganzzahl)
@@ -68,10 +95,24 @@ function setupPager(sections) {
   function hideHint() { if (hint) { hint.style.opacity = '0'; setTimeout(() => hint.remove(), 400); } }
 
   function render() {
+    // Nur die aktuelle Seite und ihre direkt angrenzende dürfen ihren Überlauf
+    // (über den Canvas gezogene Fotos) zeigen. Alle wartenden Seiten liegen
+    // gestapelt knapp unter der Kante mit höherer z-index – ohne Beschnitt würde
+    // ihr oben überstehender Teil über die aktuelle Seite ragen (auf JEDER Seite
+    // sichtbar). Deshalb: aktive Seiten großzügig (max. eine Seitenhöhe Überlauf),
+    // alle anderen hart auf den eigenen Rahmen beschneiden.
+    const base = Math.floor(pos + 1e-6);
     for (let i = 0; i < N; i++) {
       const ty = clamp(i - pos, 0, 1) * 100;               // 0 = oben (sichtbar), 100 = unten (wartet)
       const s = sections[i];
       s.style.transform = `translateY(${ty}%)`;
+      const active = (i === base || i === base + 1);
+      // Timing passend zur Richtung setzen, BEVOR der clip-path-Wert wechselt
+      // (die Transition übernimmt die zu diesem Zeitpunkt gesetzte Kurve).
+      s.style.transitionTimingFunction = active ? EASE_APPEAR : EASE_DISAPPEAR;
+      s.style.clipPath = active
+        ? 'inset(-100% -100% -100% -100%)'                 // Überlauf auf genau eine Nachbarseite erlaubt
+        : 'inset(0% 0% 0% 0%)';                            // entfernte Seiten: kein Durchscheinen
       // Schatten nur während der Bewegung, in Ruhelage keiner.
       const a = 0.55 * Math.sin(Math.PI * ty / 100);
       s.style.boxShadow = a > 0.01 ? `0 -24px 60px rgba(0,0,0,${a.toFixed(3)})` : 'none';

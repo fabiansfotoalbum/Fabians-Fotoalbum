@@ -5,6 +5,16 @@ const CANVAS_W = 2560;
 const CANVAS_H = 1440; // 16:9
 const INK = '#141311'; // off-black (etwas mehr Kontrast)
 
+// clip-path (inset), das ein Bild exakt auf den Canvas beschränkt – für die
+// Option „kein Überlauf" (Bild bleibt nur auf seiner eigenen Passage sichtbar).
+function clipInset(im) {
+  const t = Math.max(0, -im.y) / im.h * 100;
+  const r = Math.max(0, (im.x + im.w) - CANVAS_W) / im.w * 100;
+  const b = Math.max(0, (im.y + im.h) - CANVAS_H) / im.h * 100;
+  const l = Math.max(0, -im.x) / im.w * 100;
+  return `inset(${t}% ${r}% ${b}% ${l}%)`;
+}
+
 const stage = document.getElementById('stage');
 const imagesLayer = document.getElementById('imagesLayer');
 const handlesLayer = document.getElementById('handles');
@@ -26,6 +36,8 @@ const els = {
   fileInput: document.getElementById('fileInput'),
   toFront: document.getElementById('toFront'),
   toBack: document.getElementById('toBack'),
+  cropImg: document.getElementById('cropImg'),
+  clipImg: document.getElementById('clipImg'),
   deleteImg: document.getElementById('deleteImg'),
   undo: document.getElementById('undo'),
   redo: document.getElementById('redo'),
@@ -37,7 +49,7 @@ const els = {
 
 // ---------- Zustand ----------
 let currentId = null;
-let images = [];   // {src, x, y, w, h}
+let images = [];   // {src, x, y, w, h, clip?} – clip:true => kein Überlauf (auf Canvas beschränkt)
 let strokes = [];  // {tool:'brush'|'eraser', size, points:[{x,y,p}]}
 let tool = 'select';
 let brushSize = Number(els.brushSize.value);
@@ -57,6 +69,7 @@ function pushUndo() {
   updateHistoryButtons();
 }
 function applyState(s) {
+  tearDownCrop();
   const o = JSON.parse(s);
   images = o.images; strokes = o.strokes;
   if (selected >= images.length) selected = -1;
@@ -93,6 +106,7 @@ function markDirty() { dirty = true; }
 
 // ---------- Werkzeugwahl ----------
 function setTool(t) {
+  if (cropState) exitCrop(true); // offenen Zuschnitt übernehmen
   tool = t;
   document.body.dataset.tool = t;
   for (const b of els.tools.querySelectorAll('.tool')) b.classList.toggle('active', b.dataset.tool === t);
@@ -216,18 +230,32 @@ function loadImage(src) {
     im.src = `/passages/${currentId}/${encodeURIComponent(src)}`;
   });
 }
+// Innen-Bild-Style für den Beschnitt: bei crop {x,y,w,h} (Bruchteile des
+// Originals) wird das Bild so vergrößert/verschoben, dass der Ausschnitt die
+// Box ausfüllt. Ohne crop füllt das ganze Bild die Box.
+function cropInnerStyle(im) {
+  const c = im.crop;
+  if (!c) return 'width:100%;height:100%;left:0;top:0';
+  return `width:${100 / c.w}%;height:${100 / c.h}%;left:${-c.x / c.w * 100}%;top:${-c.y / c.h * 100}%`;
+}
+function buildImageEl(im, i) {
+  const wrap = document.createElement('div');
+  wrap.className = 'layer-img';
+  wrap.dataset.index = i;
+  wrap.style.left = (im.x / CANVAS_W * 100) + '%';
+  wrap.style.top = (im.y / CANVAS_H * 100) + '%';
+  wrap.style.width = (im.w / CANVAS_W * 100) + '%';
+  wrap.style.height = (im.h / CANVAS_H * 100) + '%';
+  if (im.clip) { wrap.style.clipPath = clipInset(im); wrap.classList.add('clipped'); }
+  const el = document.createElement('img');
+  el.src = `/passages/${currentId}/${encodeURIComponent(im.src)}`;
+  el.style.cssText = cropInnerStyle(im);
+  wrap.appendChild(el);
+  return wrap;
+}
 function renderImages() {
   imagesLayer.innerHTML = '';
-  images.forEach((im, i) => {
-    const el = document.createElement('img');
-    el.src = `/passages/${currentId}/${encodeURIComponent(im.src)}`;
-    el.dataset.index = i;
-    el.style.left = (im.x / CANVAS_W * 100) + '%';
-    el.style.top = (im.y / CANVAS_H * 100) + '%';
-    el.style.width = (im.w / CANVAS_W * 100) + '%';
-    el.style.height = (im.h / CANVAS_H * 100) + '%';
-    imagesLayer.appendChild(el);
-  });
+  images.forEach((im, i) => imagesLayer.appendChild(buildImageEl(im, i)));
 }
 function selectImage(i) {
   selected = i;
@@ -239,6 +267,10 @@ function updateImageButtons() {
   els.deleteImg.disabled = !has;
   els.toFront.disabled = !has;
   els.toBack.disabled = !has;
+  els.clipImg.disabled = !has;
+  els.clipImg.classList.toggle('active', has && !!images[selected].clip);
+  els.cropImg.disabled = !has;
+  els.cropImg.classList.toggle('active', !!cropState || (has && !!images[selected].crop));
 }
 function renderHandles() {
   handlesLayer.innerHTML = '';
@@ -514,7 +546,7 @@ canvas.addEventListener('pointercancel', endLasso);
 let drag = null;
 imagesLayer.addEventListener('pointerdown', e => {
   if (tool !== 'select') return;
-  const el = e.target.closest('img');
+  const el = e.target.closest('.layer-img');
   if (!el) return;
   e.preventDefault();
   const i = Number(el.dataset.index);
@@ -589,6 +621,127 @@ els.toBack.addEventListener('click', () => {
   images.unshift(it); selectImage(0);
   renderImages(); markDirty();
 });
+// Überlauf für das gewählte Bild an/aus: clip:true => bleibt auf den Canvas
+// beschränkt (nur auf der eigenen Passage sichtbar, kein Bluten auf Nachbarseiten)
+els.clipImg.addEventListener('click', () => {
+  if (selected < 0) return;
+  pushUndo();
+  images[selected].clip = !images[selected].clip;
+  renderImages(); renderHandles(); updateImageButtons(); markDirty();
+});
+
+// ---------- Zuschneiden (live, direkt auf der Stage) ----------
+// Kein Extra-Fenster: das volle Foto wird abgedunkelt an Ort und Stelle gezeigt,
+// ein Rahmen (= die platzierte Box) bestimmt den hellen Ausschnitt. Verschieben
+// = Ausschnitt übers Foto schieben, Ecken/Kanten = Ausschnitt frei skalieren.
+// Da das volle Foto unverzerrt liegt, hat jeder Ausschnitt automatisch das
+// richtige Seitenverhältnis (keine Verzerrung). Alles in Canvas-Pixeln.
+let cropState = null;
+const CROP_MIN = 60; // kleinste Ausschnittgröße in Canvas-px
+const cropPctX = v => (v / CANVAS_W * 100) + '%';
+const cropPctY = v => (v / CANVAS_H * 100) + '%';
+function setBoxStyle(el, b) {
+  el.style.left = cropPctX(b.x); el.style.top = cropPctY(b.y);
+  el.style.width = cropPctX(b.w); el.style.height = cropPctY(b.h);
+}
+// Innen-Bild-Style aus Box+Foto-Geometrie (Canvas-px) – zeigt im Box-Fenster den
+// passenden Ausschnitt des vollen Fotos.
+function innerFromGeom(box, full) {
+  return `width:${full.w / box.w * 100}%;height:${full.h / box.h * 100}%;` +
+         `left:${(full.x - box.x) / box.w * 100}%;top:${(full.y - box.y) / box.h * 100}%`;
+}
+function tearDownCrop() {
+  if (cropState) { stage.removeChild(cropState.layer); cropState = null; }
+}
+function exitCrop(commit) {
+  if (!cropState) return;
+  const { im, full, box } = cropState;
+  tearDownCrop();
+  // Während des Zuschneidens wird nur die lokale `box` verändert, nicht `images`.
+  // Abbrechen = nichts übernehmen: den in enterCrop angelegten Undo-Eintrag verwerfen.
+  if (!commit) { if (undoStack.length) undoStack.pop(); updateHistoryButtons(); updateImageButtons(); return; }
+  const fr = { x: (box.x - full.x) / full.w, y: (box.y - full.y) / full.h, w: box.w / full.w, h: box.h / full.h };
+  const isFull = fr.x < 0.002 && fr.y < 0.002 && fr.w > 0.998 && fr.h > 0.998;
+  im.x = box.x; im.y = box.y; im.w = box.w; im.h = box.h;
+  if (isFull) delete im.crop; else im.crop = fr;
+  renderImages(); renderHandles(); updateImageButtons(); markDirty();
+}
+async function enterCrop() {
+  if (selected < 0 || cropState) return;
+  const im = images[selected];
+  let full;
+  try { full = await loadImage(im.src); } catch { setStatus('Foto nicht ladbar', 'err'); return; }
+  if (selected < 0 || images[selected] !== im) return; // Auswahl inzwischen weg
+  setTool('select');
+  pushUndo();
+
+  // Volle Foto-Geometrie in Canvas-px, so dass der aktuelle Ausschnitt = Box ist.
+  const c = im.crop || { x: 0, y: 0, w: 1, h: 1 };
+  const fullGeom = { w: im.w / c.w, h: im.h / c.h };
+  fullGeom.x = im.x - c.x * fullGeom.w;
+  fullGeom.y = im.y - c.y * fullGeom.h;
+  const box = { x: im.x, y: im.y, w: im.w, h: im.h };
+
+  const layer = document.createElement('div');
+  layer.className = 'crop-layer';
+  const ghost = document.createElement('img');
+  ghost.className = 'crop-ghost';
+  ghost.src = `/passages/${currentId}/${encodeURIComponent(im.src)}`;
+  setBoxStyle(ghost, fullGeom);
+  const bright = document.createElement('div');
+  bright.className = 'crop-bright';
+  const brightImg = document.createElement('img');
+  bright.appendChild(brightImg);
+  const frame = document.createElement('div');
+  frame.className = 'crop-frame';
+  for (const cls of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+    const h = document.createElement('div'); h.className = 'ch ' + cls; h.dataset.corner = cls; frame.appendChild(h);
+  }
+  layer.append(ghost, bright, frame);
+  stage.appendChild(layer);
+  cropState = { layer, im, full: fullGeom, box };
+  updateImageButtons();
+
+  function refresh() {
+    setBoxStyle(bright, box);
+    setBoxStyle(frame, box);
+    brightImg.style.cssText = innerFromGeom(box, fullGeom);
+  }
+  refresh();
+
+  const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  let drag = null;
+  layer.addEventListener('pointerdown', e => {
+    const onFrame = e.target.closest('.crop-frame');
+    if (!onFrame) { exitCrop(true); return; }      // Klick daneben = übernehmen
+    e.preventDefault();
+    layer.setPointerCapture(e.pointerId);
+    const corner = e.target.classList.contains('ch') ? e.target.dataset.corner : null;
+    drag = { corner, start: toCanvasXY(e.clientX, e.clientY), o: { ...box } };
+  });
+  layer.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const p = toCanvasXY(e.clientX, e.clientY);
+    const dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+    const o = drag.o, F = fullGeom;
+    if (!drag.corner) { // Ausschnitt verschieben (innerhalb des Fotos)
+      box.x = cl(o.x + dx, F.x, F.x + F.w - o.w);
+      box.y = cl(o.y + dy, F.y, F.y + F.h - o.h);
+    } else { // Kante/Ecke ziehen (frei)
+      let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h;
+      const C = drag.corner;
+      if (C.includes('w')) x1 = cl(o.x + dx, F.x, x2 - CROP_MIN);
+      if (C.includes('e')) x2 = cl(o.x + o.w + dx, x1 + CROP_MIN, F.x + F.w);
+      if (C.includes('n')) y1 = cl(o.y + dy, F.y, y2 - CROP_MIN);
+      if (C.includes('s')) y2 = cl(o.y + o.h + dy, y1 + CROP_MIN, F.y + F.h);
+      box.x = x1; box.y = y1; box.w = x2 - x1; box.h = y2 - y1;
+    }
+    refresh();
+  });
+  layer.addEventListener('pointerup', () => { drag = null; });
+}
+function toggleCrop() { cropState ? exitCrop(true) : enterCrop(); }
+els.cropImg.addEventListener('click', toggleCrop);
 
 // ---------- Foto hinzufügen (Upload in Ordner) ----------
 els.addImage.addEventListener('click', () => els.fileInput.click());
@@ -667,6 +820,7 @@ async function loadPassageList(selectId) {
   return j.passages;
 }
 async function openPassage(id) {
+  if (cropState) exitCrop(true);
   if (dirty && !confirm('Ungespeicherte Änderungen verwerfen?')) {
     els.passageSelect.value = currentId; return;
   }
@@ -783,12 +937,17 @@ function buildMini(p) {
   const mini = document.createElement('div');
   mini.className = 'mini';
   for (const im of ((p.meta && p.meta.images) || [])) {
+    const wrap = document.createElement('div');
+    wrap.className = 'm-img';
+    wrap.style.cssText =
+      `left:${im.x / CANVAS_W * 100}%;top:${im.y / CANVAS_H * 100}%;` +
+      `width:${im.w / CANVAS_W * 100}%;height:${im.h / CANVAS_H * 100}%` +
+      (im.clip ? `;clip-path:${clipInset(im)}` : '');
     const el = document.createElement('img');
     el.src = `/passages/${p.id}/${encodeURIComponent(im.src)}`;
-    el.style.cssText =
-      `left:${im.x / CANVAS_W * 100}%;top:${im.y / CANVAS_H * 100}%;` +
-      `width:${im.w / CANVAS_W * 100}%;height:${im.h / CANVAS_H * 100}%`;
-    mini.appendChild(el);
+    el.style.cssText = cropInnerStyle(im);
+    wrap.appendChild(el);
+    mini.appendChild(wrap);
   }
   if (p.hasDrawing) {
     const d = document.createElement('img');
@@ -858,6 +1017,12 @@ window.addEventListener('scroll', hideCtxMenu, true);
 // ---------- Tastenkürzel ----------
 window.addEventListener('keydown', e => {
   const mod = e.metaKey || e.ctrlKey;
+  // Im Zuschneide-Modus nur Enter (übernehmen) / Esc (abbrechen) zulassen.
+  if (cropState) {
+    if (e.key === 'Escape') { e.preventDefault(); exitCrop(false); }
+    else if (e.key === 'Enter') { e.preventDefault(); exitCrop(true); }
+    return;
+  }
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
   if (mod && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); publish(); return; }
@@ -867,6 +1032,8 @@ window.addEventListener('keydown', e => {
   if (e.key === 'b') setTool('brush');
   if (e.key === 'e') setTool('eraser');
   if (e.key === 'l') setTool('lasso');
+  if (!mod && e.key === 'c' && selected >= 0) { e.preventDefault(); els.clipImg.click(); }
+  if (!mod && e.key === 'k' && selected >= 0) { e.preventDefault(); toggleCrop(); }
   if (e.key === 'Escape' && lassoSel.length) { clearLassoSelection(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (tool === 'lasso' && lassoSel.length) {

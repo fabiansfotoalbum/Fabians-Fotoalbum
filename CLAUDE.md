@@ -85,7 +85,9 @@ ist committet). Die „Node 20 deprecated"-Warnung ist **harmlos**.
 public/passages/<id>/
   <foto>.jpg|png|webp     ← Fotos (frei in den Ordner legbar)
   passage.json           ← QUELLE DER WAHRHEIT: { id, width:2560, height:1440,
-                            images:[{src,x,y,w,h}], strokes:[{tool,size,points:[{x,y,p}]}], updated }
+                            images:[{src,x,y,w,h, clip?, crop?}], strokes:[{tool,size,points:[{x,y,p}]}], updated }
+                            · clip:true  = Bild auf den Canvas beschränken (kein Überlauf/Anschnitt)
+                            · crop:{x,y,w,h} = sichtbarer Ausschnitt als Bruchteile (0..1) des Originalfotos
   drawing.png            ← gerenderte Zeichenebene (nur Anzeige, beim Speichern neu erzeugt)
 public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (self-healing)
 ```
@@ -121,7 +123,20 @@ public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (
   blendet bei erkanntem Stift ohne Druck einen Firefox-Hinweis ein.
 - **Undo/Redo**: Snapshot-Stacks (`undoStack/redoStack`, JSON von {images,strokes}). `pushUndo()` vor jeder Aktion.
 - **Bilder**: Verschieben/Skalieren (Ecken, Seitenverhältnis gehalten), vorne/hinten, löschen. „Fotos im
-  Ordner"-Leiste rechts (`tray`) zum Platzieren; Upload via `POST /api/image`.
+  Ordner"-Leiste rechts (`tray`) zum Platzieren; Upload via `POST /api/image`. Im Viewer/Editor sind Bilder
+  jetzt in einen Wrapper `.layer-img` (div, `overflow:hidden`) gepackt; das innere `<img>` realisiert den
+  Beschnitt (`cropInnerStyle()` – identisch in `editor.js`, `viewer.js`, `index.astro`).
+- **„⛶ Im Canvas" (Taste C)**: schaltet `clip` fürs gewählte Bild → `clip-path` (`clipInset()`) beschneidet
+  es exakt auf den Canvas, kein Anschnitt auf Nachbarseiten.
+- **„✂ Zuschneiden" (Taste K, Toggle)**: `enterCrop()`/`exitCrop()` – **live an Ort und Stelle**, kein
+  Extra-Fenster. Eine `.crop-layer` (z-8) über der Stage zeigt das volle Foto abgedunkelt (`.crop-ghost`),
+  den hellen Ausschnitt (`.crop-bright`) und einen Rahmen (`.crop-frame`) mit 8 Handles. Verschieben =
+  Ausschnitt übers Foto schieben, Ecken/Kanten = frei skalieren – alles in Canvas-px (`box`/`fullGeom`),
+  live aktualisiert (`refresh()`). Da das volle Foto unverzerrt liegt, hat jeder Ausschnitt automatisch das
+  richtige Seitenverhältnis → die Box wird = Ausschnitt, `crop` (Bruchteile des Originals) wird daraus
+  berechnet (keine Aspekt-Korrektur nötig). Übernehmen: Klick daneben / Enter / Toggle / Werkzeug-/
+  Passagenwechsel. Abbrechen: Esc (verwirft den Undo-Eintrag, da `images` erst beim Übernehmen geschrieben
+  wird). Voller Ausschnitt ⇒ `crop` wird entfernt.
 - **Lasso** (Tool `lasso`, Taste L): Freihand-Polygon ziehen → wählt **Pinsel-Striche** aus (Stroke gilt
   als gewählt, wenn >50 % seiner Punkte im Polygon liegen; Radierer-Striche ausgenommen). Auswahl =
   `lassoSel` (Indizes) + `selBox`. **Verschieben** (in der Box ziehen) und **Skalieren** (Eck-Anfasser,
@@ -148,6 +163,14 @@ public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (
 - **Schatten** in `render()` dynamisch: nur **während der Bewegung** sichtbar (`0.55*sin(π·ty/100)`),
   in Ruhelage keiner; Größe `0 -24px 60px`.
 - Sprung per `#id` möglich (Editor-Vorschaulink nutzt das).
+- **Überlauf/Anschnitt nur auf EINE Nachbarseite:** Alle wartenden Seiten liegen gestapelt bei
+  `translateY(100%)` mit höherer z-index als die aktuelle Seite – ohne Beschnitt würde der oben überstehende
+  Teil der **obersten** (= letzten) wartenden Passage über JEDE frühere Seite ragen. `render()` setzt darum
+  pro Frame `clip-path`: nur die aktive Seite (`base=⌊pos⌋`) und die direkt angrenzende (`base+1`) dürfen
+  bluten (`inset(-100% …)` ≈ max. eine Seitenhöhe), alle anderen `inset(0% 0% 0% 0%)`. CSS-Default `.passage`
+  ist `inset(0% …)` (kein Flash vor JS). `.passage` hat `transition: clip-path .4s …` → der Anschnitt
+  gleitet beim Seitenwechsel sanft nach oben/unten rein/raus statt hart zu verschwinden (Werte als % für
+  saubere Interpolation).
 
 ## Gotchas / Fallen
 - Editor-Assets werden mit `Cache-Control: no-store` ausgeliefert → Änderungen nach Browser-Reload sofort da.

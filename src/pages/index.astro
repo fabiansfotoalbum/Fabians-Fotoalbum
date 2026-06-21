@@ -28,6 +28,20 @@ async function readPassages() {
 }
 const passages = await readPassages();
 const pct = (v, total) => (v / total * 100) + '%';
+// clip-path, das ein Bild auf den Canvas beschränkt (Option „kein Überlauf").
+const clipInset = (im) => {
+  const t = Math.max(0, -im.y) / im.h * 100;
+  const r = Math.max(0, (im.x + im.w) - CANVAS_W) / im.w * 100;
+  const b = Math.max(0, (im.y + im.h) - CANVAS_H) / im.h * 100;
+  const l = Math.max(0, -im.x) / im.w * 100;
+  return `inset(${t}% ${r}% ${b}% ${l}%)`;
+};
+// Innen-Bild-Style für den Beschnitt (crop: Bruchteile des Originals).
+const cropInnerStyle = (im) => {
+  const c = im.crop;
+  if (!c) return 'width:100%;height:100%;left:0;top:0';
+  return `width:${100 / c.w}%;height:${100 / c.h}%;left:${-c.x / c.w * 100}%;top:${-c.y / c.h * 100}%`;
+};
 ---
 <!doctype html>
 <html lang="de">
@@ -44,12 +58,12 @@ const pct = (v, total) => (v / total * 100) + '%';
       <section class="passage" id={p.id} style={`z-index:${i + 1}`}>
         <div class="stage">
           {p.images.map((im) => (
-            <img
+            <div
               class="layer-img"
-              src={`passages/${p.id}/${im.src}`}
-              style={`left:${pct(im.x, CANVAS_W)};top:${pct(im.y, CANVAS_H)};width:${pct(im.w, CANVAS_W)};height:${pct(im.h, CANVAS_H)}`}
-              alt=""
-            />
+              style={`left:${pct(im.x, CANVAS_W)};top:${pct(im.y, CANVAS_H)};width:${pct(im.w, CANVAS_W)};height:${pct(im.h, CANVAS_H)}${im.clip ? `;clip-path:${clipInset(im)}` : ''}`}
+            >
+              <img src={`passages/${p.id}/${im.src}`} style={cropInnerStyle(im)} alt="" />
+            </div>
           ))}
           {p.hasDrawing && <img class="drawing" src={`passages/${p.id}/drawing.png?v=${p.updated}`} alt="" />}
         </div>

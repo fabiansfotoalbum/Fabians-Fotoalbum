@@ -53,6 +53,7 @@ button, .ghost, select {
 button:hover, .ghost:hover, select:hover { background: #34343a; }
 button:disabled { opacity: .4; cursor: default; }
 .tool.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+#clipImg.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .primary:hover { background: #3e7cf0; }
 .publish { background: #2f7d4f; border-color: #2f7d4f; color: #fff; font-weight: 600; }
@@ -93,10 +94,15 @@ input[type="range"] { width: 120px; accent-color: var(--accent); }
   width: 100%;
   height: 100%;
 }
-.images { overflow: hidden; }
-.images img {
+/* Überlauf sichtbar lassen, damit der Editor zeigt, was auf der öffentlichen
+   Seite über den Canvas hinaus auf die Nachbarseite blutet (WYSIWYG). Bilder
+   mit „kein Überlauf" (.clipped) werden per clip-path einzeln beschnitten. */
+.images { overflow: visible; }
+.images .layer-img { position: absolute; overflow: hidden; }
+.images .layer-img img {
   position: absolute;
   display: block;
+  object-fit: fill;
   -webkit-user-drag: none;
   user-select: none;
   pointer-events: none;
@@ -107,7 +113,7 @@ input[type="range"] { width: 120px; accent-color: var(--accent); }
 
 /* Modi: im Auswahl-Modus klickt man durch die Zeichenebene auf Bilder */
 body[data-tool="select"] .drawing { pointer-events: none; }
-body[data-tool="select"] .images img { pointer-events: auto; cursor: grab; }
+body[data-tool="select"] .images .layer-img { pointer-events: auto; cursor: grab; }
 body[data-tool="brush"] .drawing { cursor: crosshair; }
 body[data-tool="eraser"] .drawing { cursor: cell; }
 body[data-tool="lasso"] .drawing { cursor: crosshair; }
@@ -132,6 +138,35 @@ body[data-tool="lasso"] .drawing { cursor: crosshair; }
 .handle.ne { cursor: nesw-resize; }
 .handle.se { cursor: nwse-resize; }
 .handle.sw { cursor: nesw-resize; }
+
+/* Zuschneiden live auf der Stage: volles Foto abgedunkelt (ghost), heller
+   Ausschnitt (bright) + frei ziehbarer Rahmen mit Ecken-/Kanten-Handles. */
+.crop-layer { position: absolute; inset: 0; z-index: 8; touch-action: none; }
+.crop-ghost { position: absolute; opacity: .35; pointer-events: none; object-fit: fill; -webkit-user-drag: none; }
+.crop-bright { position: absolute; overflow: hidden; pointer-events: none; }
+.crop-bright img { position: absolute; object-fit: fill; -webkit-user-drag: none; }
+.crop-frame {
+  position: absolute;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.45);
+  cursor: move;
+}
+.crop-frame .ch {
+  position: absolute;
+  width: 13px; height: 13px;
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.crop-frame .ch.nw { left: 0;    top: 0;    cursor: nwse-resize; }
+.crop-frame .ch.n  { left: 50%;  top: 0;    cursor: ns-resize; }
+.crop-frame .ch.ne { left: 100%; top: 0;    cursor: nesw-resize; }
+.crop-frame .ch.e  { left: 100%; top: 50%;  cursor: ew-resize; }
+.crop-frame .ch.se { left: 100%; top: 100%; cursor: nwse-resize; }
+.crop-frame .ch.s  { left: 50%;  top: 100%; cursor: ns-resize; }
+.crop-frame .ch.sw { left: 0;    top: 100%; cursor: nesw-resize; }
+.crop-frame .ch.w  { left: 0;    top: 50%;  cursor: ew-resize; }
 
 /* Tray */
 .tray {
@@ -188,7 +223,8 @@ body[data-tool="lasso"] .drawing { cursor: crosshair; }
   overflow: hidden;
   pointer-events: none;
 }
-.passage-item .mini img { position: absolute; display: block; }
+.passage-item .mini .m-img { position: absolute; overflow: hidden; }
+.passage-item .mini img { position: absolute; display: block; object-fit: fill; }
 .passage-item .mini .mini-draw { inset: 0; width: 100%; height: 100%; }
 .passage-item .name {
   position: absolute;

@@ -21,6 +21,14 @@ body {
      Seite hochgeschoben wird, sonst keiner. */
   will-change: transform;
   transform: translateY(100%);
+  /* Sichere Voreinstellung: kein Überlauf über den eigenen Rahmen hinaus.
+     viewer.js lockert das pro Frame für die aktive Seite + die direkt
+     angrenzende auf (max. eine Seitenhöhe Überlauf), damit über den Canvas
+     gezogene Fotos NUR auf der Nachbarseite durchscheinen, nicht auf allen.
+     Die Transition lässt den Anschnitt beim Seitenwechsel sanft rein-/
+     rausgleiten (nach oben/unten) statt hart zu verschwinden. */
+  clip-path: inset(0% 0% 0% 0%);
+  transition: clip-path .4s cubic-bezier(.22, .61, .36, 1);
 }
 .passage:first-child { transform: translateY(0); }
 .stage {
@@ -30,7 +38,8 @@ body {
   background: var(--stage-bg);
 }
 .stage img { position: absolute; display: block; }
-.stage .layer-img { object-fit: fill; -webkit-user-drag: none; }
+.stage .layer-img { position: absolute; overflow: hidden; }
+.stage .layer-img img { width: 100%; height: 100%; object-fit: fill; -webkit-user-drag: none; }
 .stage .drawing { inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 .scroll-hint {
