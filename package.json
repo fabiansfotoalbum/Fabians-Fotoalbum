@@ -1,0 +1,16 @@
+{
+  "name": "photowebsite",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Fotowebsite – digitale Datenbank & Portfolio. Passagen als 16:9-Canvas.",
+  "scripts": {
+    "editor": "node editor/server.mjs",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "devDependencies": {
+    "astro": "^4.16.0"
+  }
+}

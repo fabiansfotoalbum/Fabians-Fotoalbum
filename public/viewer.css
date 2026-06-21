@@ -1,0 +1,51 @@
+/* Öffentliche Ansicht: Passagen als 16:9, von unten hochschieben (neue Seite über die alte).
+   Bewegung wird per JS gesteuert (magnetisches Einrasten mit kleiner Hürde). */
+:root { --page-bg: #0f0f0c; --stage-bg: #f8f7f4; } /* off-black / off-white */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--page-bg); overflow: hidden; }
+body {
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #fff;
+  overscroll-behavior: none;
+}
+
+.stack { position: fixed; inset: 0; }
+.passage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--page-bg);
+  /* Schatten wird in viewer.js dynamisch gesetzt: nur sichtbar, während die
+     Seite hochgeschoben wird, sonst keiner. */
+  will-change: transform;
+  transform: translateY(100%);
+}
+.passage:first-child { transform: translateY(0); }
+.stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: min(100vw, calc(100svh * 16 / 9));
+  background: var(--stage-bg);
+}
+.stage img { position: absolute; display: block; }
+.stage .layer-img { object-fit: fill; -webkit-user-drag: none; }
+.stage .drawing { inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.scroll-hint {
+  position: fixed;
+  left: 50%; bottom: 18px;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,.7);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  animation: bob 1.8s ease-in-out infinite;
+  z-index: 9999;
+  transition: opacity .4s;
+}
+@keyframes bob { 0%,100%{ transform: translateX(-50%) translateY(0); } 50%{ transform: translateX(-50%) translateY(-6px); } }
+
+.empty { position: fixed; inset: 0; display: grid; place-items: center; color: #888; }

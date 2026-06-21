@@ -1,0 +1,12 @@
+# Abhängigkeiten & Build-Artefakte (werden von GitHub selbst erzeugt)
+node_modules/
+dist/
+.astro/
+
+# Betriebssystem / Logs
+.DS_Store
+*.log
+
+# Editor-Hilfsdateien
+icon_1024.png
+*.iconset/

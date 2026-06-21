@@ -1,0 +1,34 @@
+#!/bin/bash
+# Startet den lokalen Editor-Server (falls nicht schon aktiv) und öffnet den Browser.
+# Liegt in Foto-Editor.app/Contents/MacOS/ -> Projektordner ist drei Ebenen höher.
+PROJECT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
+PORT="${EDITOR_PORT:-4455}"
+
+NODE="$(command -v node)"
+if [ -z "$NODE" ]; then
+  osascript -e 'display dialog "Node.js wurde nicht gefunden.\n\nBitte Node.js installieren (https://nodejs.org) und erneut versuchen." buttons {"OK"} default button "OK" with icon stop with title "Foto-Editor"'
+  exit 1
+fi
+
+cd "$PROJECT_DIR" || exit 1
+
+# Läuft der Server schon?
+if ! curl -s "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+  EDITOR_PORT="$PORT" nohup "$NODE" editor/server.mjs >/tmp/foto-editor.log 2>&1 &
+  for i in $(seq 1 60); do
+    curl -s "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 && break
+    sleep 0.2
+  done
+fi
+
+if ! curl -s "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+  osascript -e 'display dialog "Der Editor-Server konnte nicht gestartet werden.\n\nDetails: /tmp/foto-editor.log" buttons {"OK"} default button "OK" with icon stop with title "Foto-Editor"'
+  exit 1
+fi
+
+URL="http://127.0.0.1:$PORT/"
+# Bevorzugt Firefox (dort funktioniert der Stiftdruck zuverlässig), sonst Standardbrowser.
+if ! open -a "Firefox" "$URL" 2>/dev/null; then
+  open "$URL"
+fi

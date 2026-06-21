@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Foto-Editor</title>
+  <link rel="stylesheet" href="/editor.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <div class="group">
+      <label class="lbl">Passage</label>
+      <select id="passageSelect" title="Passage wählen"></select>
+      <button id="newPassage" title="Neue Passage">＋ neu</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="group" id="tools">
+      <button data-tool="select" class="tool active" title="Auswählen / Bilder bewegen (V)">↖ Auswählen</button>
+      <button data-tool="brush" class="tool" title="Pinsel (B)">✎ Pinsel</button>
+      <button data-tool="eraser" class="tool" title="Radiergummi (E)">⌫ Radierer</button>
+      <button data-tool="lasso" class="tool" title="Lasso: Gemaltes auswählen, verschieben, skalieren (L)">⬚ Lasso</button>
+    </div>
+
+    <div class="group">
+      <label class="lbl">Größe</label>
+      <input type="range" id="brushSize" min="2" max="160" value="22" />
+      <span id="brushSizeVal" class="val">22</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="group">
+      <button id="addImage" title="Foto hinzufügen">🖼 Foto</button>
+      <button id="toFront" title="Nach vorne" disabled>↑ vorne</button>
+      <button id="toBack" title="Nach hinten" disabled>↓ hinten</button>
+      <button id="deleteImg" title="Bild entfernen (Entf)" disabled>🗑 Bild</button>
+    </div>
+
+    <div class="group">
+      <button id="undo" title="Rückgängig (⌘Z)">↩︎</button>
+      <button id="redo" title="Wiederholen (⌘⇧Z)">↪︎</button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="group">
+      <a id="previewLink" href="/view" target="_blank" class="ghost" title="Öffentliche Vorschau">Vorschau ↗</a>
+      <button id="save" class="primary" title="Speichern (⌘S)">Speichern</button>
+      <span id="status" class="status"></span>
+    </div>
+
+    <input type="file" id="fileInput" accept="image/*" multiple hidden />
+  </header>
+
+  <div class="ctxmenu" id="ctxmenu" hidden></div>
+
+  <aside class="passages" id="passagesPanel">
+    <div class="passages-head">
+      <span class="title">Passagen</span>
+      <button id="addPassageSide" title="Neue Passage am Ende">＋</button>
+    </div>
+    <div id="passageList"></div>
+  </aside>
+
+  <main class="stagewrap">
+    <div class="stage" id="stage">
+      <div class="images" id="imagesLayer"></div>
+      <canvas class="drawing" id="canvas"></canvas>
+      <canvas class="overlay" id="overlay"></canvas>
+      <div class="handles" id="handles"></div>
+    </div>
+    <div class="hud" id="hud" title="Live-Druck des Stifts">–</div>
+    <div class="pressure-hint" id="pressureHint" hidden>
+      Stift erkannt, aber <b>kein Druck</b>. Das passiert in Safari.<br>
+      Öffne den Editor in <b>Firefox</b> (dort funktioniert Stiftdruck).
+      <button id="hintClose" title="Schließen">×</button>
+    </div>
+  </main>
+
+  <aside class="tray" id="tray">
+    <div class="tray-title">Fotos im Ordner</div>
+    <div class="tray-hint">Leg Fotos in den Passagen-Ordner – sie erscheinen hier. Klicken zum Platzieren.</div>
+    <div class="tray-items" id="trayItems"></div>
+  </aside>
+
+  <script src="/editor.js"></script>
+</body>
+</html>
