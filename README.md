@@ -24,7 +24,7 @@ Du kannst jede Passage jederzeit wieder öffnen und alles ändern – die Pinsel
 als Daten gespeichert (`passage.json`), nicht nur als Bild, daher bleibt alles editierbar.
 
 **Passagen-Leiste links**: kleine Vorschau aller Passagen. Klicken → Passage öffnen.
-**Rechtsklick** auf eine Vorschau → *neue Passage davor / danach* oder *Passage löschen*.
+**Rechtsklick** auf eine Vorschau → *neue Passage davor / danach*, *umbenennen* oder *löschen*.
 Die Reihenfolge steht in `public/passages/_order.json` (Editor & Website lesen sie).
 
 ### Tastenkürzel
