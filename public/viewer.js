@@ -61,7 +61,11 @@ async function buildFromApi(root) {
 
 function setupPager(sections) {
   const N = sections.length;
-  sections.forEach((s, i) => { s.style.zIndex = i + 1; });
+  // z-Reihenfolge + EINMALIG einen statischen clip-path setzen: er deckelt den
+  // Überlauf jeder Seite auf max. eine Seitenhöhe in jede Richtung (Sicherheits-
+  // Deckel), wird aber nie umgeschaltet oder animiert. Der CSS-Default inset(0%)
+  // verhindert nur den Flash der noch gestapelten Seiten vor dem ersten render().
+  sections.forEach((s, i) => { s.style.zIndex = i + 1; s.style.clipPath = 'inset(-100% -100% -100% -100%)'; });
   if (N <= 1) { if (sections[0]) sections[0].style.transform = 'translateY(0)'; return; }
 
   // --- Scroll-Gefühl (fullPage.js / GSAP-ScrollSmoother-Stil) ---------------
@@ -75,13 +79,10 @@ function setupPager(sections) {
   const LOCK   = 420;     // ms Sperre nach einem Wechsel
   const IDLE   = 110;     // ms ohne Eingabe -> Vorschau federt zurück
   // -------------------------------------------------------------------------
-
-  // Easing für das clip-path-Gleiten des Anschnitts. Verschwinden = ease-out
-  // (sanftes Ausklingen). Auftauchen = die zeitlich umgekehrte Kurve, damit es
-  // genau die Rückwärts-Version des Verschwindens ist (sanftes Anlaufen, kein
-  // abruptes Reinspringen). Reverse von (x1,y1,x2,y2) = (1-x2,1-y2,1-x1,1-y1).
-  const EASE_DISAPPEAR = 'cubic-bezier(.22, .61, .36, 1)';
-  const EASE_APPEAR    = 'cubic-bezier(.64, 0, .78, .39)';
+  // Kein Umschalt-/Animationssystem mehr für den Überlauf: über den Canvas
+  // gezogene Fotos sind starr Teil ihrer Seite und bewegen sich allein über
+  // deren translateY (s. render() – wartende Seiten staffeln sich nach unten).
+  // Der statische clip-path (setupPager) deckelt nur auf max. eine Seitenhöhe.
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   let pos = 0;            // gerenderte Position (stufenlos)
@@ -95,26 +96,19 @@ function setupPager(sections) {
   function hideHint() { if (hint) { hint.style.opacity = '0'; setTimeout(() => hint.remove(), 400); } }
 
   function render() {
-    // Nur die aktuelle Seite und ihre direkt angrenzende dürfen ihren Überlauf
-    // (über den Canvas gezogene Fotos) zeigen. Alle wartenden Seiten liegen
-    // gestapelt knapp unter der Kante mit höherer z-index – ohne Beschnitt würde
-    // ihr oben überstehender Teil über die aktuelle Seite ragen (auf JEDER Seite
-    // sichtbar). Deshalb: aktive Seiten großzügig (max. eine Seitenhöhe Überlauf),
-    // alle anderen hart auf den eigenen Rahmen beschneiden.
-    const base = Math.floor(pos + 1e-6);
+    // Wartende Seiten staffeln sich nach UNTEN (100 %, 200 %, 300 % …) statt
+    // alle auf 100 % zu stapeln. Dadurch ragt von Natur aus nur der Überlauf
+    // der direkt nächsten Seite in den Blick – alle weiteren liegen weit genug
+    // unter der Kante. Der über den Canvas gezogene Überlauf ist so STARR Teil
+    // seiner Seite und bewegt sich zu 100 % mit deren translateY mit; kein
+    // Umschalten, kein Ein-/Ausblenden (der statische clip-path aus setupPager
+    // deckelt nur sicherheitshalber auf max. eine Seitenhöhe).
     for (let i = 0; i < N; i++) {
-      const ty = clamp(i - pos, 0, 1) * 100;               // 0 = oben (sichtbar), 100 = unten (wartet)
+      const ty = Math.max(0, i - pos) * 100;               // 0 = sichtbar/oben, >0 = nach unten gestaffelt
       const s = sections[i];
       s.style.transform = `translateY(${ty}%)`;
-      const active = (i === base || i === base + 1);
-      // Timing passend zur Richtung setzen, BEVOR der clip-path-Wert wechselt
-      // (die Transition übernimmt die zu diesem Zeitpunkt gesetzte Kurve).
-      s.style.transitionTimingFunction = active ? EASE_APPEAR : EASE_DISAPPEAR;
-      s.style.clipPath = active
-        ? 'inset(-100% -100% -100% -100%)'                 // Überlauf auf genau eine Nachbarseite erlaubt
-        : 'inset(0% 0% 0% 0%)';                            // entfernte Seiten: kein Durchscheinen
-      // Schatten nur während der Bewegung, in Ruhelage keiner.
-      const a = 0.55 * Math.sin(Math.PI * ty / 100);
+      // Schatten nur an der einen Seite, die gerade hochschiebt (0..1).
+      const a = (ty > 0 && ty < 100) ? 0.55 * Math.sin(Math.PI * ty / 100) : 0;
       s.style.boxShadow = a > 0.01 ? `0 -24px 60px rgba(0,0,0,${a.toFixed(3)})` : 'none';
     }
   }

@@ -163,14 +163,15 @@ public/passages/_order.json  ← Array der Passagen-IDs in Anzeige-Reihenfolge (
 - **Schatten** in `render()` dynamisch: nur **während der Bewegung** sichtbar (`0.55*sin(π·ty/100)`),
   in Ruhelage keiner; Größe `0 -24px 60px`.
 - Sprung per `#id` möglich (Editor-Vorschaulink nutzt das).
-- **Überlauf/Anschnitt nur auf EINE Nachbarseite:** Alle wartenden Seiten liegen gestapelt bei
-  `translateY(100%)` mit höherer z-index als die aktuelle Seite – ohne Beschnitt würde der oben überstehende
-  Teil der **obersten** (= letzten) wartenden Passage über JEDE frühere Seite ragen. `render()` setzt darum
-  pro Frame `clip-path`: nur die aktive Seite (`base=⌊pos⌋`) und die direkt angrenzende (`base+1`) dürfen
-  bluten (`inset(-100% …)` ≈ max. eine Seitenhöhe), alle anderen `inset(0% 0% 0% 0%)`. CSS-Default `.passage`
-  ist `inset(0% …)` (kein Flash vor JS). `.passage` hat `transition: clip-path .4s …` → der Anschnitt
-  gleitet beim Seitenwechsel sanft nach oben/unten rein/raus statt hart zu verschwinden (Werte als % für
-  saubere Interpolation).
+- **Überlauf (über den Canvas gezogene Fotos) ist STARR mit seiner Seite verbunden** – keine eigene
+  Animation, kein Umschalten. Trick: wartende Seiten **staffeln sich nach unten** statt zu stapeln –
+  `render()` setzt `translateY = max(0, i − pos) · 100 %` (also 100 %, 200 %, 300 % …). Dadurch ragt von
+  Natur aus **nur der Überlauf der direkt nächsten Seite** in den Blick; alle weiteren liegen weit genug
+  unter der Kante. Der Überlauf bewegt sich so zu 100 % mit der translateY-Bewegung seiner Seite mit.
+  `setupPager` setzt **einmalig** einen **statischen** `clip-path: inset(-100% …)` pro Seite (Deckel:
+  max. eine Seitenhöhe Überlauf je Richtung) – nie pro Frame, nie animiert. CSS-Default `.passage` bleibt
+  `inset(0% …)` nur, damit die vor dem ersten `render()` noch gestapelten Seiten nicht kurz durchscheinen
+  (kein Flash). Hinweis: Bei extremen Bleeds (> eine Seitenhöhe) deckelt der statische clip-path hart.
 
 ## Gotchas / Fallen
 - Editor-Assets werden mit `Cache-Control: no-store` ausgeliefert → Änderungen nach Browser-Reload sofort da.

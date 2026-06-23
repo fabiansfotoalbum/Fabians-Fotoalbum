@@ -21,14 +21,13 @@ body {
      Seite hochgeschoben wird, sonst keiner. */
   will-change: transform;
   transform: translateY(100%);
-  /* Sichere Voreinstellung: kein Überlauf über den eigenen Rahmen hinaus.
-     viewer.js lockert das pro Frame für die aktive Seite + die direkt
-     angrenzende auf (max. eine Seitenhöhe Überlauf), damit über den Canvas
-     gezogene Fotos NUR auf der Nachbarseite durchscheinen, nicht auf allen.
-     Die Transition lässt den Anschnitt beim Seitenwechsel sanft rein-/
-     rausgleiten (nach oben/unten) statt hart zu verschwinden. */
+  /* Pre-JS-Default: Überlauf auf den eigenen Rahmen begrenzt, damit die noch
+     gestapelten Seiten vor dem ersten render() nicht durchscheinen (kein Flash).
+     setupPager() setzt danach EINMALIG einen statischen clip-path inset(-100%)
+     (Deckel: max. eine Seitenhöhe Überlauf) – nie umgeschaltet, nie animiert.
+     Der Überlauf ist damit starr Teil seiner Seite und wandert allein über deren
+     translateY mit (wartende Seiten staffeln sich nach unten, s. viewer.js). */
   clip-path: inset(0% 0% 0% 0%);
-  transition: clip-path .4s cubic-bezier(.22, .61, .36, 1);
 }
 .passage:first-child { transform: translateY(0); }
 .stage {
